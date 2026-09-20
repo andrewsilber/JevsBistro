@@ -199,4 +199,4 @@ Follow latest is enabled initially; turn it off or select a previous interaction
 
 Costs are estimates using returned token usage and standard USD rates checked September 19, 2026: [GPT-5.4 nano](https://developers.openai.com/api/docs/models/gpt-5.4-nano), [GPT-5 nano](https://developers.openai.com/api/docs/models/gpt-5-nano), [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini). The call limit is not a dollar budget. Failed or cancelled requests may incur charges without returning usage. Automated tests use mocks; actual model access and planning quality require a user-key run.
 
-Public repository on GitHub. No license has been chosen yet; all rights reserved until one is added. Public performance claims require controlled multi-seed evaluations and real-world calibration; a working API connection alone is not validation.
+Public repository on GitHub. Released under the MIT License (see LICENSE). Public performance claims require controlled multi-seed evaluations and real-world calibration; a working API connection alone is not validation.
