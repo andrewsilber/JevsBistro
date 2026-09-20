@@ -14,6 +14,7 @@ import { CameraFeed } from "./view/camera-feed";
 import { RestaurantPresets } from "./view/restaurant-presets";
 import { observeDiner } from "./sim/observations";
 import { RunHistoryStore, summarizeRun } from "./history/run-history";
+import { JEV_PROMPT_VERSION } from "./jev/protocol";
 import { RunHistoryPanel } from "./view/run-history";
 const $ =<T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
@@ -433,7 +434,7 @@ const historyPanel = new RunHistoryPanel($("history-panel"), runHistory, (config
 function recordRun(automatic: boolean) {
   try {
     const record = summarizeRun({ id: historyIds.get(sim), config: sim.config, metrics: sim.metrics, simulatedSeconds: sim.now, finished: sim.finished,
-      controller: proxyMode ? aiProvider : "rules", model: proxyMode ? proxySettings.model : undefined, usage: proxyMode ? proxyUsage : undefined });
+      controller: proxyMode ? aiProvider : "rules", model: proxyMode ? proxySettings.model : undefined, promptVersion: proxyMode ? (aiProvider === "jev" ? JEV_PROMPT_VERSION : "bistro-rows-v1") : undefined, usage: proxyMode ? proxyUsage : undefined });
     runHistory.save(record);
     historyIds.set(sim, record.id);
     historyNotice = automatic ? "Saved to run history automatically." : `Saved ${sim.finished ? "this run" : "this partial run"} to run history.`;

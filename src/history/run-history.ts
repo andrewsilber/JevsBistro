@@ -25,6 +25,8 @@ export interface RunRecord {
   savedAt: string;
   controller: RunController;
   model?: string;
+  /** Adapter prompt/tour-description version for AI runs, so prompt changes stay comparable in history. */
+  promptVersion?: string;
   finished: boolean;
   simulatedSeconds: number;
   config: Config;
@@ -33,7 +35,7 @@ export interface RunRecord {
 export interface RunSummaryInput {
   id?: string; savedAt?: string;
   config: Config; metrics: Metrics; simulatedSeconds: number; finished: boolean;
-  controller: RunController; model?: string; usage?: ProxyUsage;
+  controller: RunController; model?: string; promptVersion?: string; usage?: ProxyUsage;
 }
 
 const mean = (values: number[]) => values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
@@ -48,6 +50,7 @@ export function summarizeRun(input: RunSummaryInput): RunRecord {
     savedAt: input.savedAt ?? new Date().toISOString(),
     controller: input.controller,
     model: input.controller === "rules" ? undefined : input.model,
+    promptVersion: input.controller === "rules" ? undefined : input.promptVersion,
     finished: input.finished,
     simulatedSeconds: input.simulatedSeconds,
     config: copyConfig(input.config),
@@ -85,6 +88,7 @@ export const HISTORY_COLUMNS: HistoryColumn[] = [
   { key: "savedAt", group: "run", label: "Saved", kind: "date", value: (r) => r.savedAt },
   { key: "seed", group: "run", label: "Seed", kind: "count", value: (r) => r.config.seed },
   { key: "controller", group: "run", label: "Controller", kind: "text", value: (r) => r.model ? `${controllerLabel(r)} · ${r.model}` : controllerLabel(r) },
+  { key: "promptVersion", group: "run", label: "Prompt", kind: "text", value: (r) => r.promptVersion ?? (r.controller === "rules" ? null : "tours-v1") },
   { key: "status", group: "run", label: "Status", kind: "text", value: (r) => r.finished ? "Complete" : "Partial" },
   { key: "simulatedSeconds", group: "run", label: "Service time", kind: "seconds", value: (r) => r.simulatedSeconds },
   setup("mode", "Observation", "text", (r) => r.config.mode === "camera" ? "Camera" : "Local scans"),

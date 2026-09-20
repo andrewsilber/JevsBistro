@@ -30,6 +30,11 @@ test("a completed run is summarized with its full setup and the service report f
   const ai = summarizeRun({ config: sim.config, metrics: sim.metrics, simulatedSeconds: sim.now, finished: true, controller: "jev", model: "jev-1.13.0",
     usage: { calls: 7, inputTokens: 700, outputTokens: 70, cachedTokens: 0, wallMs: 4200, failures: 0, estimatedUsd: 0.0003 } });
   assert.equal(ai.model, "jev-1.13.0");
+  assert.equal(ai.promptVersion, undefined);
+  const promptColumn = HISTORY_COLUMNS.find((c) => c.key === "promptVersion")!;
+  assert.equal(promptColumn.value(ai), "tours-v1", "older AI rows without a recorded prompt are labelled as the original wording");
+  assert.equal(promptColumn.value(record), null);
+  assert.equal(promptColumn.value({ ...ai, promptVersion: "tours-v2" }), "tours-v2");
   assert.equal(ai.results.aiCalls, 7);
   assert.equal(ai.results.inferenceSeconds, 4.2);
   // Every configuration field except the raw menu appears as a setup column, so new settings cannot silently vanish from comparisons.
@@ -95,8 +100,8 @@ test("sorting keeps empty values last in both directions and CSV exports raw val
   const csv = historyCsv(records).split("\r\n");
   assert.equal(csv.length, 4);
   assert.equal(csv[0].split(",").length, HISTORY_COLUMNS.length);
-  assert.ok(csv[0].startsWith("Restaurant,Saved,Seed,Controller,Status"));
+  assert.ok(csv[0].startsWith("Restaurant,Saved,Seed,Controller,Prompt,Status"));
   assert.ok(csv[1].startsWith('"Bravo, ""quoted""",'), "commas and quotes are escaped");
-  assert.ok(csv[2].includes(",Rules,Complete,"), "raw values not display strings");
+  assert.ok(csv[2].includes(",Rules,,Complete,"), "raw values not display strings; rules rows have no prompt version");
   assert.ok(!csv[2].includes("—"), "empty values export as blanks");
 });
