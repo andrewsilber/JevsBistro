@@ -1,14 +1,17 @@
 import type { Candidate, DecisionContext } from "../sim/types";
 
 export const JEV_MODELS = ["jev-1.13.0", "jev-latest", "jev-preview"] as const;
-export const JEV_PROMPT_VERSION = "tours-v2";
-/** tours-v1 described each tour by time alone, which made the quickest single stop look best; v2 states what every stop accomplishes as well. */
-export const JEV_INSTRUCTIONS = "Choose the best next service tour for this server. Each tour lists what every stop accomplishes and how long that guest has already waited, then the tour's total time and walking. Judge tours by the needs they clear per minute of the server's time: weigh overdue greetings, guests ready to order or pay, hot food, empty water and efficient walking, and do not starve older needs. A tour that clears several nearby needs is usually better than the quickest single stop; a tour is not better merely because it is shorter. All offered tours are feasible; times are seconds and already include walking and service. A tour ends at an inventory-changing station. Evidence may be stale; an unknown request needs a conversation, not an inferred hidden intention. Priority is only a rules heuristic. Tour alternatives are not an exhaustive search of every itinerary.";
+export const JEV_PROMPT_VERSION = "tours-v3";
+/** tours-v1 described each tour by time alone, which made the quickest single stop look best. v2 stated what table stops accomplish but
+ * called kitchen and bar pickups station trips that serve no table, so ready food and cocktails were left waiting. v3 credits pickups with
+ * the tables they feed and the time their tickets have waited. */
+export const JEV_INSTRUCTIONS = "Choose the best next service tour for this server. Each tour lists what every stop accomplishes and how long that guest has already waited, then the tour's total time and walking. Food and cocktails waiting at the kitchen pass or bar are guests waiting too, and their wait is included in each tour's totals. Judge tours by the needs they clear per minute of the server's time: weigh overdue greetings, guests ready to order or pay, hot food, empty water and efficient walking, and do not starve older needs. A tour that clears several nearby needs is usually better than the quickest single stop; a tour is not better merely because it is shorter. All offered tours are feasible; times are seconds and already include walking and service. A tour ends at an inventory-changing station. Evidence may be stale; an unknown request needs a conversation, not an inferred hidden intention. Priority is only a rules heuristic. Tour alternatives are not an exhaustive search of every itinerary.";
 const verbs: Record<Candidate["kind"], string> = { greet: "greet", order: "take the order at", dessert: "offer dessert menus at", pay: "take payment at", bill: "present the bill at",
   deliver: "deliver hot food to", drink_deliver: "deliver cocktails to", refill: "refill water at", check: "check on", clear: "clear finished plates at", bus: "reset",
   request: "help with a request at", patrol: "look in on", pickup: "collect ready food at the kitchen pass", bar_pickup: "collect cocktails at the bar",
   drop: "return used dishes", supplies: "collect supplies at the side station", pitcher: "refill the water pitcher at the side station" };
-const selfExplanatory = new Set(["drop", "pitcher", "supplies", "pickup", "bar_pickup", "check", "bus"]);
+const selfExplanatory = new Set(["drop", "pitcher", "supplies", "check", "bus"]);
+const pickups = new Set(["pickup", "bar_pickup"]);
 const guestFacing = new Set(["greet", "order", "dessert", "pay", "bill", "deliver", "drink_deliver", "refill", "clear", "request"]);
 const terminal = new Set(["pickup", "bar_pickup", "supplies", "pitcher", "drop"]);
 const round = (n: number) => Math.round(n * 10) / 10;
@@ -50,7 +53,7 @@ export function jevRequest(context: DecisionContext, model: string) {
   const tours = jevTours(context);
   const tasks = context.candidates.map((c) => {
     const o = context.observations.find((o) => o.table === c.table);
-    return { action: c.id, kind: c.kind, table: c.table, reason: c.reason, heuristicPriority: round(c.priority),
+    return { action: c.id, kind: c.kind, table: c.table, serves: c.serves, ticketWaitingSeconds: c.waitingSeconds === undefined ? undefined : round(c.waitingSeconds), reason: c.reason, heuristicPriority: round(c.priority),
       serviceSeconds: c.duration ?? 5, evidenceAgeSeconds: round(Math.max(0, context.now - c.observedAt)),
       tableState: o && { stage: o.stage, stageAgeSeconds: round(Math.max(0, context.now - o.since)), source: o.source,
         evidenceAgeSeconds: round(Math.max(0, context.now - o.at)), request: o.request, requestPhase: o.requestPhase,
@@ -61,6 +64,8 @@ export function jevRequest(context: DecisionContext, model: string) {
     const c = context.candidates.find((item) => item.id === id)!;
     const o = context.observations.find((item) => item.table === c.table);
     const waited = o ? Math.round(Math.max(0, context.now - o.since)) : 0;
+    if (pickups.has(c.kind) && c.serves?.length)
+      return `${verbs[c.kind]} for ${c.serves.length === 1 ? "table" : "tables"} ${c.serves.join(", ")} (${c.kind === "pickup" ? "food" : "cocktails"} waiting ${Math.round(c.waitingSeconds ?? 0)}s in total)`;
     const detail = selfExplanatory.has(c.kind) ? [] : [c.reason.replace(/\.$/, "")];
     if (o && guestFacing.has(c.kind)) detail.push(`waiting ${waited}s`);
     if (o?.request && c.kind === "request") detail.push(`request ${o.request}`);
@@ -70,9 +75,9 @@ export function jevRequest(context: DecisionContext, model: string) {
     const stops = t.ids.map((stop, i) => `${i + 1}. ${describe(stop)}`).join("; ");
     const cleared = t.ids.reduce((n, stop) => {
       const c = context.candidates.find((item) => item.id === stop)!, o = context.observations.find((item) => item.table === c.table);
-      return n + (o && guestFacing.has(c.kind) ? Math.max(0, context.now - o.since) : 0);
+      return n + (pickups.has(c.kind) ? Math.max(0, c.waitingSeconds ?? 0) : o && guestFacing.has(c.kind) ? Math.max(0, context.now - o.since) : 0);
     }, 0);
-    const tables = new Set(t.ids.map((stop) => context.candidates.find((item) => item.id === stop)!.table).filter(Boolean)).size;
+    const tables = new Set(t.ids.flatMap((stop) => { const c = context.candidates.find((item) => item.id === stop)!; return c.serves?.length ? c.serves : c.table ? [c.table] : []; })).size;
     const time = `${round(t.elapsed)}s total, ${round(t.walking)}s of it walking`;
     return [id, tables ? `${stops}. Serves ${tables} ${tables === 1 ? "table" : "tables"} and clears about ${Math.round(cleared)}s of accumulated guest waiting in ${time}.` : `${stops}. Station trip only, no table served; ${time}.`];
   }));

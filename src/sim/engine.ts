@@ -403,8 +403,8 @@ export class Simulation {
       reason: string,
       table?: number,
       observedAt = this.now,
-    ) =>
-      tasks.push({
+    ) => {
+      const candidate: Candidate = {
         id: `${kind}:${table ?? 0}`,
         kind,
         destination,
@@ -416,7 +416,15 @@ export class Simulation {
         duration: durations[kind],
         dirtyLoad: table && ["bus", "clear"].includes(kind) ? Math.min(4 - s.dirty, kind === "bus" ? (s.memory.get(table)?.diners.length ?? 0) : (s.memory.get(table)?.finished.filter(Boolean).length ?? 0)) : 0,
         waterNeeded: table ? (s.memory.get(table)?.waters ?? []).filter((w) => w < 40).reduce((sum, w) => sum + (100 - w) / 100, 0) : 0,
-      });
+      };
+      tasks.push(candidate);
+      return candidate;
+    };
+    // Ready tickets name the tables they feed and how long each table's oldest item has waited.
+    const ticketInfo = (tickets: { table: number; readyAt: number }[]) => {
+      const tables = [...new Set(tickets.map((d) => d.table))].sort((a, b) => a - b);
+      return { serves: tables, waitingSeconds: tables.reduce((sum, table) => sum + this.now - Math.min(...tickets.filter((d) => d.table === table).map((d) => d.readyAt)), 0) };
+    };
     if (s.plates.length) {
       const ids = [
         ...new Set(
@@ -463,20 +471,17 @@ export class Simulation {
           this.tables[d.table - 1].reservedBy === s.id,
       );
     // Kitchen-ready tickets are shared notifications available to both controllers.
-    if (ready.length && !s.dirty)
-      add(
-        "pickup",
-        this.layout.kitchen,
-        115 +
-          Math.min(
-            55,
-            (this.now - Math.min(...ready.map((d) => d.readyAt))) * 0.3,
-          ),
-        "Kitchen ticket: food ready",
-      );
+    if (ready.length && !s.dirty) {
+      const info = ticketInfo(ready);
+      Object.assign(add("pickup", this.layout.kitchen, 115 + Math.min(55, (this.now - Math.min(...ready.map((d) => d.readyAt))) * 0.3),
+        `Kitchen ticket: ${ready.length} ${ready.length === 1 ? "dish" : "dishes"} ready for ${info.serves.length === 1 ? "table" : "tables"} ${info.serves.join(", ")}`), info);
+    }
     const drinks = this.bar.ready(this.now).filter((d) => !this.tables[d.table - 1].reservedBy || this.tables[d.table - 1].reservedBy === s.id);
-    if (drinks.length && !s.dirty)
-      add("bar_pickup", this.layout.bar, 110 + Math.min(55, (this.now - drinks[0].readyAt) * 0.3), "Bar ticket: cocktails ready");
+    if (drinks.length && !s.dirty) {
+      const info = ticketInfo(drinks);
+      Object.assign(add("bar_pickup", this.layout.bar, 110 + Math.min(55, (this.now - drinks[0].readyAt) * 0.3),
+        `Bar ticket: ${drinks.length} ${drinks.length === 1 ? "cocktail" : "cocktails"} ready for ${info.serves.length === 1 ? "table" : "tables"} ${info.serves.join(", ")}`), info);
+    }
     if (!s.pitcher || s.water < 0.5)
       add(
         "pitcher",

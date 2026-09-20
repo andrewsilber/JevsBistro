@@ -212,6 +212,10 @@ export type ActionKind =
   | "drop"
   | "patrol";
 export interface Candidate {
+  /** Tables whose ready food or cocktails a station pickup would collect; shared kitchen/bar facts, not guest evidence. */
+  serves?: number[];
+  /** Summed per-table age of those ready tickets, in seconds. */
+  waitingSeconds?: number;
   party?: number;
   duration?: number;
   dirtyLoad?: number;

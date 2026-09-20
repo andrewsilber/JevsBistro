@@ -21,12 +21,12 @@ function result(ctx: DecisionContext) {
 }
 test("Jev tours preserve first choices, obey inventory and route constraints, and use only observed evidence", () => {
   const sim = new Simulation(config, undefined, undefined, { externalDecisions: true, recordHistory: false });
-  let decisions = 0, multi = 0;
+  let decisions = 0, multi = 0, pickupsSeen = 0;
   while (!sim.finished && sim.now < 4000) {
     sim.step();
     const p = sim.pendingDecision;
     if (!p) continue;
-    const tours = Object.values(jevTours(p.context));
+    const offered = jevTours(p.context), tours = Object.values(offered);
     assert.ok(tours.length <= p.context.candidates.length * 2);
     assert.deepEqual(new Set(tours.map((t) => t.ids[0])), new Set(p.context.candidates.map((c) => c.id)));
     for (const tour of tours) {
@@ -49,11 +49,20 @@ test("Jev tours preserve first choices, obey inventory and route constraints, an
     assert.equal(request.questions.service_tour.type, "choice");
     assert.deepEqual(request.state.tasks.map((t) => t.action), p.context.candidates.map((c) => c.id));
     assert.equal("scenario" in request.state, false);
+    for (const [id, tour] of Object.entries(offered)) {
+      const first = p.context.candidates.find((c) => c.id === tour.ids[0])!, text = request.questions.service_tour.criteria[id];
+      if (!["pickup", "bar_pickup"].includes(first.kind)) continue;
+      pickupsSeen++;
+      // Ready tickets are credited with the tables they feed and their waiting time, never described as serving nobody.
+      assert.match(text, /for tables? \d/); assert.match(text, /waiting \d+s in total/); assert.doesNotMatch(text, /no table served/);
+      assert.ok(first.serves!.length >= 1 && first.waitingSeconds! >= 0);
+      assert.match(text, new RegExp(`Serves ${first.serves!.length}`));
+    }
     const chosen = tours.reduce((a, b) => a.reward / (20 + a.elapsed) > b.reward / (20 + b.elapsed) ? a : b);
     multi += Number(chosen.ids.length > 1);
     sim.resolveDecision(p.id, chosen.ids); decisions++;
   }
-  assert.ok(decisions > 10); assert.ok(multi > 0);
+  assert.ok(decisions > 10); assert.ok(multi > 0); assert.ok(pickupsSeen > 0);
 });
 
 test("typed Jev answers reject invented plans, invalid probabilities/usage and accept ambiguous preferences", () => {
