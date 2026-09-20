@@ -1,0 +1,7 @@
+node_modules/
+dist/
+work/
+.env
+.env.*
+!.env.example
+.sites-runtime/
