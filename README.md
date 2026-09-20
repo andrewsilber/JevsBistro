@@ -110,4 +110,4 @@ npm run build
 
 The full description of the evidence rules, planners, metrics, AI adapters, and every deliberate abstraction lives in [docs/reference.md](docs/reference.md).
 
-This is a private prototype. Choose a license before any public release.
+No license has been chosen yet, so the code is shared for reading and discussion; all rights reserved until one is added.
